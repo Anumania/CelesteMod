@@ -1,0 +1,6 @@
+﻿- Name: TimeMechanic
+  Version: 3.2.0
+  DLL: TimeMechanic.dll
+  Dependencies:
+    - Name: Everest
+      Version: 1.0.0
