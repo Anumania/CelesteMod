@@ -35,27 +35,71 @@ namespace Celeste.Mod.TimeMechanic {
                 orig(self);
             }
         }
+        private void CaptureParticleState(Player p)
+        {
 
-        private void Player_Update(On.Celeste.Player.orig_Update orig, Player self)
+        }
+
+        private void CaptureBurstState(Player p,RewindStateInfo state)
+        {
+            List<RewindStateInfo.BurstStateInfo> bs = new List<RewindStateInfo.BurstStateInfo>();
+
+            DisplacementRenderer dispRenderer = thePlayer.SceneAs<Level>().Displacement;
+            //get the shockwave points list
+            List<DisplacementRenderer.Burst> points = (List<DisplacementRenderer.Burst>)typeof(DisplacementRenderer).GetField("points", BindingFlags.Instance|BindingFlags.NonPublic).GetValue(dispRenderer);
+            for (int i = 0; i < points.Count; i++)
+            {
+                RewindStateInfo.BurstStateInfo fakeBurst = new RewindStateInfo.BurstStateInfo();
+                DisplacementRenderer.Burst realBurst = points[i];
+                //make a bit of a copy
+                fakeBurst.scaleFrom = realBurst.ScaleFrom;
+                fakeBurst.scaleTo = realBurst.ScaleTo;
+                fakeBurst.texture = realBurst.Texture;
+                fakeBurst.position = realBurst.Position;
+                fakeBurst.duration = realBurst.Duration;
+                fakeBurst.percent = realBurst.Percent;
+                fakeBurst.alphaFrom = realBurst.AlphaFrom;
+                fakeBurst.alphaTo = realBurst.AlphaTo;
+                fakeBurst.alphaEaser = realBurst.AlphaEaser;
+                bs.Add(fakeBurst);
+            }
+            state.burstState = bs;
+        }
+
+        private void Player_Update(On.Celeste.Player.orig_Update orig, Player p)
         {
             if (thePlayer.StateMachine.State != 26)
             {
-                if(rewinder.Count >= 5 * 60)
+                if(rewinder.Count >= 400 * 60)
                 {
                     rewinder.RemoveAt(0);
                 }
-                rewinder.Add(new RewindStateInfo(self.Position, self.Facing, self.Dashes, self.Sprite.CurrentAnimationID, self.Sprite.CurrentAnimationFrame));
-                self.Sprite.Rate = -1;
+                RewindStateInfo state = new RewindStateInfo(
+                        p.Position,
+                        p.Facing,
+                        p.Sprite.CurrentAnimationID,
+                        p.Sprite.CurrentAnimationFrame,
+                        p.Hair.Nodes.GetRange(0, p.Hair.Nodes.Count)
+                        );
+                Sprite sweatSprite = (Sprite)typeof(Player).GetField("sweatSprite",BindingFlags.Instance | BindingFlags.NonPublic).GetValue(p);
+                state.sweatSprite = sweatSprite.CurrentAnimationID;
+                state.sweatFrame = sweatSprite.CurrentAnimationFrame;
+                state.spriteRef = sweatSprite; //dont use reflection again, just save a reference 
+                state.scale = p.Sprite.Scale;
+                CaptureBurstState(p,state);
+                rewinder.Add(state);
+
+                //self.Sprite.Rate = -1;
             }
-            orig(self);
+            orig(p);
             if (Microsoft.Xna.Framework.Input.Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.N))
             {
-                self.StateMachine.State = 26;
-                TrailManager.Add(thePlayer, thePlayer.GetCurrentTrailColor(),duration:5);
+                p.StateMachine.State = 26;
+                //TrailManager.Add(thePlayer, thePlayer.GetCurrentTrailColor(),duration:0.5f);
             }
             if (Microsoft.Xna.Framework.Input.Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.M))
             {
-                thePlayer.SceneAs<Level>().Add(new TimeEnt(self.Position));
+                thePlayer.SceneAs<Level>().Add(new TimeEnt(p.Position));
             }
         }
 
@@ -66,9 +110,12 @@ namespace Celeste.Mod.TimeMechanic {
             self.StateMachine.SetCallbacks(26, new Func<int>(this.RewindTime));
         }
 
-        private void Player_ctor(MonoMod.Cil.ILContext il)
+        private void Player_ctor(MonoMod.Cil.ILContext il) //change the StateMachine constructor's parameter to 1 more so we can make a state for rewind.
         {
-            il.Instrs[176].Operand = ((System.SByte)il.Instrs[176].Operand) + 1;
+            int ilIndex = 204 - 24;
+            //System.Console.WriteLine(il.Instrs[ilIndex]);
+            //il.Instrs
+            il.Instrs[ilIndex].Operand = ((sbyte)il.Instrs[ilIndex].Operand) + 1;
         }
 
         private int RewindTime()
@@ -85,22 +132,23 @@ namespace Celeste.Mod.TimeMechanic {
             }
             RewindStateInfo rew = rewinder.LastOrDefault();
             rewinder.RemoveAt(rewinder.Count-1);
-            thePlayer.Position = rew.Position;
-            thePlayer.Facing = rew.Facing;
-            thePlayer.Dashes = rew.Dashes;
+            thePlayer.Position = rew.position;
+            thePlayer.Sprite.Scale = rew.scale;
+            thePlayer.Facing = rew.facing;
             try
             {
-                if(rew.Animation != "")
+                if(rew.animation != "")
                 {
-                    thePlayer.Sprite.PlayOffset(rew.Animation, rew.Animframe);
-                    thePlayer.Sprite.Rate = 0;
+                    thePlayer.Sprite.PlayOffset(rew.animation, rew.animFrame);
+                    rew.spriteRef.PlayOffset(rew.sweatSprite, rew.sweatFrame);
                 }
             }
             catch (Exception e)
             {
-                Console.WriteLine(rew.Animation);
+                Console.WriteLine(rew.animation);
                 Console.WriteLine(e.ToString());
             }
+            thePlayer.Hair.Nodes = rew.hairNodes; //handle hair physics
             return 26;
         }
         public override void LoadContent(bool firstLoad) {
@@ -165,20 +213,45 @@ namespace Celeste.Mod.TimeMechanic {
 
     public class RewindStateInfo
     {
-        public Vector2 Position;
-        public Facings Facing;
-        public int Dashes;
-        public int Animframe;
-        public string Animation;
+        public Vector2 position; //TODO: refactor this to use properly cased vars
+        public Facings facing;
+        public int animFrame;
+        public string animation;
+        public List<Vector2> hairNodes;
+        public int sweatFrame;
+        public string sweatSprite;
+        public Sprite spriteRef;
+        public Vector2 scale;
+        public List<BurstStateInfo> burstState;
+        
         //public PlayerHair Hair;
         //public PlayerSprite Sprite;
-        public RewindStateInfo(Vector2 pos, Facings dir, int dashes, string animation, int animframe)//,PlayerHair hair, PlayerSprite sprite)
+        //this shouldnt have this many arguments, set after.
+        public RewindStateInfo(Vector2 pos, Facings dir, string animation, int animframe, List<Vector2> hairNodes)//,PlayerHair hair, PlayerSprite sprite)
         {
-            Position = pos;
-            Facing = dir;
-            Dashes = dashes;
-            Animation = animation;
-            Animframe = animframe;
+            position = pos;
+            facing = dir;
+            this.animation = animation;
+            animFrame = animframe;
+            this.hairNodes = hairNodes;
+        }
+
+        public class BurstStateInfo
+        {
+            public Vector2 position;
+            public float percent;
+            public float scaleFrom;
+            public float scaleTo;
+            public MTexture texture;
+            public float duration;
+            public float alphaFrom;
+            public float alphaTo;
+            public Ease.Easer alphaEaser;
+
+            public BurstStateInfo()
+            {
+
+            }
         }
     }
 
