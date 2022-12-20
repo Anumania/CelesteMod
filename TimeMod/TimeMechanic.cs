@@ -112,10 +112,15 @@ namespace Celeste.Mod.TimeMechanic {
 
         private void Player_ctor(MonoMod.Cil.ILContext il) //change the StateMachine constructor's parameter to 1 more so we can make a state for rewind.
         {
-            int ilIndex = 204 - 24;
-            //System.Console.WriteLine(il.Instrs[ilIndex]);
-            //il.Instrs
-            il.Instrs[ilIndex].Operand = ((sbyte)il.Instrs[ilIndex].Operand) + 1;
+            for(int i = 0; i < il.Instrs.Count; i++)
+            {
+
+                if((sbyte)il?.Instrs[i]?.Operand == 26 && il?.Instrs[i]?.OpCode == OpCodes.Ldc_I4_S) //find the il where they load the number of states and then increase it by 1
+                {
+                    il.Instrs[i].Operand = ((sbyte)il.Instrs[i].Operand) + 1;
+                    break;
+                }
+            }
         }
 
         private int RewindTime()
