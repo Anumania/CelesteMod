@@ -99,6 +99,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Effects.cs" />
     <Compile Include="TimeMechanic.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

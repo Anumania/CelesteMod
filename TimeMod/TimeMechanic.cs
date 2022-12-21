@@ -11,11 +11,13 @@ using System.Text;
 using System.Threading.Tasks;
 using On.Celeste;
 using Mono.Cecil.Cil;
+using Steamworks;
 
 namespace Celeste.Mod.TimeMechanic {
     public class TimeMechanic : EverestModule {
         List<RewindStateInfo> rewinder = new List<RewindStateInfo>();
         public static Player thePlayer;
+        public static bool hasStartedToDash;
         public override void LoadSettings() {
 
         }
@@ -26,6 +28,13 @@ namespace Celeste.Mod.TimeMechanic {
             On.Celeste.Player.ctor += Player_ctor1;
             On.Celeste.Player.Update += Player_Update;
             On.Celeste.Player.UpdateSprite += Player_UpdateSprite;
+            On.Celeste.Player.StartDash += Player_StartDash;
+        }
+
+        private int Player_StartDash(On.Celeste.Player.orig_StartDash orig, Player self)
+        {
+            hasStartedToDash = true;
+            return orig(self);
         }
 
         private void Player_UpdateSprite(On.Celeste.Player.orig_UpdateSprite orig, Player self)
@@ -68,9 +77,10 @@ namespace Celeste.Mod.TimeMechanic {
 
         private void Player_Update(On.Celeste.Player.orig_Update orig, Player p)
         {
+            
             if (thePlayer.StateMachine.State != 26)
             {
-                if(rewinder.Count >= 400 * 60)
+                if(rewinder.Count >= 10 * 60)
                 {
                     rewinder.RemoveAt(0);
                 }
@@ -86,12 +96,28 @@ namespace Celeste.Mod.TimeMechanic {
                 state.sweatFrame = sweatSprite.CurrentAnimationFrame;
                 state.spriteRef = sweatSprite; //dont use reflection again, just save a reference 
                 state.scale = p.Sprite.Scale;
-                CaptureBurstState(p,state);
+                state.dashDir = p.Speed.Angle(); // the dashDir variable is only set when the statemachine component updates (later)
+
+                ParticleSystem fg = thePlayer.SceneAs<Level>().ParticlesFG;
+                Particle[] farticles = (Particle[])typeof(ParticleSystem).GetField("particles", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(fg);
+                state.farticles = (Particle[]) farticles.Clone();
+
+                ParticleSystem part = thePlayer.SceneAs<Level>().Particles;
+                Particle[] particles = (Particle[])typeof(ParticleSystem).GetField("particles", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(part);
+                state.particles = (Particle[])particles.Clone();
+
+                ParticleSystem bg = thePlayer.SceneAs<Level>().ParticlesBG;
+                Particle[] barticles = (Particle[])typeof(ParticleSystem).GetField("particles", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(bg);
+                state.barticles = (Particle[])barticles.Clone();
+
+                state.dash = hasStartedToDash;
+                hasStartedToDash = false;
+                //CaptureBurstState(p,state);
                 rewinder.Add(state);
 
                 //self.Sprite.Rate = -1;
             }
-            orig(p);
+            
             if (Microsoft.Xna.Framework.Input.Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.N))
             {
                 p.StateMachine.State = 26;
@@ -101,6 +127,7 @@ namespace Celeste.Mod.TimeMechanic {
             {
                 thePlayer.SceneAs<Level>().Add(new TimeEnt(p.Position));
             }
+            orig(p);
         }
 
         private void Player_ctor1(On.Celeste.Player.orig_ctor orig, Player self, Vector2 position, PlayerSpriteMode spriteMode)
@@ -114,12 +141,16 @@ namespace Celeste.Mod.TimeMechanic {
         {
             for(int i = 0; i < il.Instrs.Count; i++)
             {
+                if (il.Instrs[i].OpCode != OpCodes.Ldc_I4_S)
+                    continue;
 
-                if((sbyte)il?.Instrs[i]?.Operand == 26 && il?.Instrs[i]?.OpCode == OpCodes.Ldc_I4_S) //find the il where they load the number of states and then increase it by 1
-                {
-                    il.Instrs[i].Operand = ((sbyte)il.Instrs[i].Operand) + 1;
-                    break;
-                }
+                if (il.Instrs[i].Operand == null)
+                    continue;
+                if ((sbyte)il.Instrs[i].Operand != 26) //this will crash if the operand cannot be cast, so make sure the opcode is i4_s so it can be cast.
+                    continue;
+ 
+                il.Instrs[i].Operand = ((sbyte)il.Instrs[i].Operand) + 1; //edit the amount of states to be 26 instead of 25 (or 1 more than what it was previously)
+                break;
             }
         }
 
@@ -134,6 +165,17 @@ namespace Celeste.Mod.TimeMechanic {
             if (rewinder.Count == 0)
             {
                 return 0;
+            }
+            if(rewinder.Count >= 24)
+            {            
+                RewindStateInfo rewDash = rewinder[rewinder.Count - 24]; //0.4 * 60
+                if (rewDash.dash)
+                {
+                    thePlayer.SceneAs<Level>().Displacement.AddBurst(rewDash.position, 0.4f, 64f, 8f, 0.5f, Ease.QuadIn, Ease.QuadIn);
+                    RewindStateInfo slashState = rewinder[rewinder.Count - 23]; //the exact frame does not give the right direction for some reason.
+                    ReverseSlashFx.Burst(slashState.position, slashState.dashDir);
+                }
+
             }
             RewindStateInfo rew = rewinder.LastOrDefault();
             rewinder.RemoveAt(rewinder.Count-1);
@@ -154,6 +196,20 @@ namespace Celeste.Mod.TimeMechanic {
                 Console.WriteLine(e.ToString());
             }
             thePlayer.Hair.Nodes = rew.hairNodes; //handle hair physics
+
+            FieldInfo particleField = typeof(ParticleSystem).GetField("particles", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            ParticleSystem fg = thePlayer.SceneAs<Level>().ParticlesFG;
+            particleField.SetValue(fg,rew.farticles);
+
+            ParticleSystem part = thePlayer.SceneAs<Level>().Particles;
+            particleField.SetValue(part, rew.particles);
+
+            ParticleSystem bg = thePlayer.SceneAs<Level>().ParticlesBG;
+            particleField.SetValue(bg, rew.barticles);
+
+
+
             return 26;
         }
         public override void LoadContent(bool firstLoad) {
@@ -228,7 +284,13 @@ namespace Celeste.Mod.TimeMechanic {
         public Sprite spriteRef;
         public Vector2 scale;
         public List<BurstStateInfo> burstState;
-        
+        public bool dash;
+        public float dashDir;
+
+        public Particle[] farticles; //foreground particles
+        public Particle[] particles; //ground particles
+        public Particle[] barticles; //background particles
+
         //public PlayerHair Hair;
         //public PlayerSprite Sprite;
         //this shouldnt have this many arguments, set after.
@@ -252,6 +314,8 @@ namespace Celeste.Mod.TimeMechanic {
             public float alphaFrom;
             public float alphaTo;
             public Ease.Easer alphaEaser;
+
+
 
             public BurstStateInfo()
             {
