@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using On.Celeste;
 using Mono.Cecil.Cil;
 using Steamworks;
+using Celeste.Mod.Entities;
 
 namespace Celeste.Mod.TimeMechanic {
     public class TimeMechanic : EverestModule {
@@ -39,7 +40,7 @@ namespace Celeste.Mod.TimeMechanic {
 
         private void Player_UpdateSprite(On.Celeste.Player.orig_UpdateSprite orig, Player self)
         {
-            if(thePlayer.StateMachine.State != 26)
+            if (thePlayer.StateMachine.State != 26)
             {
                 orig(self);
             }
@@ -49,13 +50,13 @@ namespace Celeste.Mod.TimeMechanic {
 
         }
 
-        private void CaptureBurstState(Player p,RewindStateInfo state)
+        private void CaptureBurstState(Player p, RewindStateInfo state)
         {
             List<RewindStateInfo.BurstStateInfo> bs = new List<RewindStateInfo.BurstStateInfo>();
 
             DisplacementRenderer dispRenderer = thePlayer.SceneAs<Level>().Displacement;
             //get the shockwave points list
-            List<DisplacementRenderer.Burst> points = (List<DisplacementRenderer.Burst>)typeof(DisplacementRenderer).GetField("points", BindingFlags.Instance|BindingFlags.NonPublic).GetValue(dispRenderer);
+            List<DisplacementRenderer.Burst> points = (List<DisplacementRenderer.Burst>)typeof(DisplacementRenderer).GetField("points", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(dispRenderer);
             for (int i = 0; i < points.Count; i++)
             {
                 RewindStateInfo.BurstStateInfo fakeBurst = new RewindStateInfo.BurstStateInfo();
@@ -77,10 +78,10 @@ namespace Celeste.Mod.TimeMechanic {
 
         private void Player_Update(On.Celeste.Player.orig_Update orig, Player p)
         {
-            
+
             if (thePlayer.StateMachine.State != 26)
             {
-                if(rewinder.Count >= 10 * 60)
+                if (rewinder.Count >= 10 * 60)
                 {
                     rewinder.RemoveAt(0);
                 }
@@ -91,7 +92,7 @@ namespace Celeste.Mod.TimeMechanic {
                         p.Sprite.CurrentAnimationFrame,
                         p.Hair.Nodes.GetRange(0, p.Hair.Nodes.Count)
                         );
-                Sprite sweatSprite = (Sprite)typeof(Player).GetField("sweatSprite",BindingFlags.Instance | BindingFlags.NonPublic).GetValue(p);
+                Sprite sweatSprite = (Sprite)typeof(Player).GetField("sweatSprite", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(p);
                 state.sweatSprite = sweatSprite.CurrentAnimationID;
                 state.sweatFrame = sweatSprite.CurrentAnimationFrame;
                 state.spriteRef = sweatSprite; //dont use reflection again, just save a reference 
@@ -100,7 +101,7 @@ namespace Celeste.Mod.TimeMechanic {
 
                 ParticleSystem fg = thePlayer.SceneAs<Level>().ParticlesFG;
                 Particle[] farticles = (Particle[])typeof(ParticleSystem).GetField("particles", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(fg);
-                state.farticles = (Particle[]) farticles.Clone();
+                state.farticles = (Particle[])farticles.Clone();
 
                 ParticleSystem part = thePlayer.SceneAs<Level>().Particles;
                 Particle[] particles = (Particle[])typeof(ParticleSystem).GetField("particles", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(part);
@@ -117,7 +118,7 @@ namespace Celeste.Mod.TimeMechanic {
 
                 //self.Sprite.Rate = -1;
             }
-            
+
             if (Microsoft.Xna.Framework.Input.Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.N))
             {
                 p.StateMachine.State = 26;
@@ -139,7 +140,7 @@ namespace Celeste.Mod.TimeMechanic {
 
         private void Player_ctor(MonoMod.Cil.ILContext il) //change the StateMachine constructor's parameter to 1 more so we can make a state for rewind.
         {
-            for(int i = 0; i < il.Instrs.Count; i++)
+            for (int i = 0; i < il.Instrs.Count; i++)
             {
                 if (il.Instrs[i].OpCode != OpCodes.Ldc_I4_S)
                     continue;
@@ -148,7 +149,7 @@ namespace Celeste.Mod.TimeMechanic {
                     continue;
                 if ((sbyte)il.Instrs[i].Operand != 26) //this will crash if the operand cannot be cast, so make sure the opcode is i4_s so it can be cast.
                     continue;
- 
+
                 il.Instrs[i].Operand = ((sbyte)il.Instrs[i].Operand) + 1; //edit the amount of states to be 26 instead of 25 (or 1 more than what it was previously)
                 break;
             }
@@ -166,8 +167,8 @@ namespace Celeste.Mod.TimeMechanic {
             {
                 return 0;
             }
-            if(rewinder.Count >= 24)
-            {            
+            if (rewinder.Count >= 24)
+            {
                 RewindStateInfo rewDash = rewinder[rewinder.Count - 24]; //0.4 * 60
                 if (rewDash.dash)
                 {
@@ -178,13 +179,13 @@ namespace Celeste.Mod.TimeMechanic {
 
             }
             RewindStateInfo rew = rewinder.LastOrDefault();
-            rewinder.RemoveAt(rewinder.Count-1);
+            rewinder.RemoveAt(rewinder.Count - 1);
             thePlayer.Position = rew.position;
             thePlayer.Sprite.Scale = rew.scale;
             thePlayer.Facing = rew.facing;
             try
             {
-                if(rew.animation != "")
+                if (rew.animation != "")
                 {
                     thePlayer.Sprite.PlayOffset(rew.animation, rew.animFrame);
                     rew.spriteRef.PlayOffset(rew.sweatSprite, rew.sweatFrame);
@@ -200,7 +201,7 @@ namespace Celeste.Mod.TimeMechanic {
             FieldInfo particleField = typeof(ParticleSystem).GetField("particles", BindingFlags.NonPublic | BindingFlags.Instance);
 
             ParticleSystem fg = thePlayer.SceneAs<Level>().ParticlesFG;
-            particleField.SetValue(fg,rew.farticles);
+            particleField.SetValue(fg, rew.farticles);
 
             ParticleSystem part = thePlayer.SceneAs<Level>().Particles;
             particleField.SetValue(part, rew.particles);
@@ -226,9 +227,12 @@ namespace Celeste.Mod.TimeMechanic {
         public override void CreateModMenuSection(TextMenu menu, bool inGame, EventInstance snapshot) {
 
         }
-        
+
 
     }
+    [CustomEntity(new string[]
+        {"TimeMechanic/TimeEntity"}
+        )]
     public class TimeEnt : Entity
     {
         DashListener dashListener;

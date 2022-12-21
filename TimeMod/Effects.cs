@@ -19,7 +19,7 @@ namespace Celeste.Mod.TimeMechanic
                 0
             });
         }
-        public static ReverseSlashFx Burst(Vector2 position, float direction)
+        new public static ReverseSlashFx Burst(Vector2 position, float direction) //explicitly override normal SlashFx burst with the new keyword
         {
             Scene scene = Engine.Scene;
             ReverseSlashFx slashFx = Engine.Pooler.Create<ReverseSlashFx>();
