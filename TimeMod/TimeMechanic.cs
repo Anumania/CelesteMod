@@ -112,6 +112,8 @@ namespace Celeste.Mod.TimeMechanic {
                 state.barticles = (Particle[])barticles.Clone();
 
                 state.dash = hasStartedToDash;
+
+                state.playerSpeed = p.Speed;
                 hasStartedToDash = false;
                 //CaptureBurstState(p,state);
                 rewinder.Add(state);
@@ -209,8 +211,7 @@ namespace Celeste.Mod.TimeMechanic {
             ParticleSystem bg = thePlayer.SceneAs<Level>().ParticlesBG;
             particleField.SetValue(bg, rew.barticles);
 
-
-
+            //thePlayer.Speed = -rew.playerSpeed; //could be cool? investigate
             return 26;
         }
         public override void LoadContent(bool firstLoad) {
@@ -230,25 +231,33 @@ namespace Celeste.Mod.TimeMechanic {
 
 
     }
-    [CustomEntity(new string[]
-        {"TimeMechanic/TimeEntity"}
-        )]
+    [CustomEntity("TimeMechanic/TimeEntity")]
     public class TimeEnt : Entity
     {
         DashListener dashListener;
-        Sprite inactiveSprite;
         Sprite sprite;
         int activeTimer;
         bool active = false;
+
+        public TimeEnt(EntityData data, Vector2 offset) : this(data.Position + offset) //idk bro
+        {
+
+        }
         public TimeEnt(Vector2 pos) : base(pos)
         {
             base.Depth = -8500;
             base.Collider = new Circle(10f, 0f, 2f);
             base.Add(new PlayerCollider(new Action<Player>(this.OnPlayer), null, null));
-            base.Add(this.sprite = GFX.SpriteBank.Create("booster"));
+            base.Add(this.sprite = new Sprite(GFX.Game, "objects/refill/idle"));
+
+            this.sprite.AddLoop("idle", "", 0.1f);
+            this.sprite.Play("idle", false, false);
+            this.sprite.CenterOrigin();
+
             base.Add(this.dashListener = new DashListener());
 
             this.dashListener.OnDash = new Action<Vector2>(this.OnPlayerDashed);
+            Position = pos;
         }
         private void OnPlayer(Player player)
         {
@@ -273,6 +282,10 @@ namespace Celeste.Mod.TimeMechanic {
                 active = true;
                 this.sprite = GFX.SpriteBank.Create("boosterRed");
             }
+            Visible = true;
+            Console.WriteLine(this.Depth);
+            Console.WriteLine(this.Position);
+            Console.WriteLine(this.Active);
         }
     }
 
@@ -290,6 +303,7 @@ namespace Celeste.Mod.TimeMechanic {
         public List<BurstStateInfo> burstState;
         public bool dash;
         public float dashDir;
+        public Vector2 playerSpeed;
 
         public Particle[] farticles; //foreground particles
         public Particle[] particles; //ground particles
